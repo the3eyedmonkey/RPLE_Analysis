@@ -1,5 +1,5 @@
-function RPLE_Analysis_ver7_1(varargin)
-%% RPLE_Analysis_ver7_1.m
+function RPLE_Analysis_ver8_0(varargin)
+%% RPLE_Analysis_ver8_0.m
 % By Tristan Wilkinson
 % 
 % This program is used for loading and analyzing a bunch of RPLE spectra.
@@ -11,25 +11,14 @@ function RPLE_Analysis_ver7_1(varargin)
 % the scan indices. The plotarrays structure contains the same information,
 % but instead is organized to contain a single value for all scans.
 % 
-% ******* ver7.0 (2/10/20) **********
+% ******* ver7.0 (10/29/21) **********
 % UPDATES:
 % 
-% This version allows for the user to finish processing any data that was
-% taken during MultipleScans LabVIEW code, and not fully analyzed.
+% This version will be a complete overhaul to allow for generalized
+% functionality with the TAW_RPLE_MultipleScans_v2.vi.
 % 
-% This version allows for the possibility of magnetic field scans. This
-% now gives 4 possibilites for type of scan: reference, AC, magnet, ACmagnet.
-% 
-% This update parses the file names and automatically extracts the parameter
-% values for the magnetic field and the AC Stark laser.
-% 
-% This update also includes the posibility for the user to directly supply
-% the program with the folder path. This will allow for an easy call at the
-% end of my LabVIEW multiple scans program.
-% 
-% 3D plots of scans with both the magnetic field and AC Stark laser are
-% made.
-% 
+% I am also going to attempt to modulaized the code and figure out how to
+% use Git to my advantage.
 % 
 % 
 % PROGRAM OVERVIEW:  (goes roughly section by section)
@@ -87,115 +76,43 @@ clc;
 %% Input parameters
     in_params = inputParser;
     in_params.CaseSensitive = false;
-    in_params.addParamValue('path','', @ischar);
+    in_params.addParameter('path','', @ischar);
     in_params.parse(varargin{:});
     
     path = in_params.Results.path;
 %% Loading in the data
+    % Check the path
     if isempty(path)
-        % Ask the user to select the folder of interest. Start point can be
-        % changed by specifying the string inside of uigetdir().
-        path = uigetdir('\\ecas.wvu.edu\squol\AC Stark Effect');
-        if path == 0 %User pressed cancel
-            cprintf('err', '\nERROR: Please select the folder DIRECTLY ABOVE the folders with data in them when prompted.\n');
+        % Ask the user to select the folder of interest '\\ecas.wvu.edu\squol\AC Stark Effect'
+        path = uigetdir();
+        if path == 0 % User pressed cancel
+            cprintf('err', '\nERROR: Please select the folder DIRECTLY ABOVE the folders with data in them.\n');
             beep; return
         end
     end
     
-    % Extract the name of the folder the user has selected.
+    % Extract and print the name of the folder the user has selected
     split = strsplit(path, '\');
     folder = split(end);
-    
     fprintf(1, ['\nRPLE_Analysis: ', folder{1}, '\n']);
     
-    % Load in the structure for the folder the program is in.
-    directory = dir(path);
+    % Load the data
+    data = loadRPLEdata(path);
     
-    % Next define a 'data' structure to store the filename,x,y,sy in when
-    % the spectrum is loaded in.
-    chars = char(1:length(directory));
-    
-    data = struct('filename',cellstr((chars(1:length(directory)-2))'),...
-        'x',cellstr((chars(1:length(directory)-2))'),...
-        'y',cellstr((chars(1:length(directory)-2))'),...
-        'sy',cellstr((chars(1:length(directory)-2))'),...
-        'ACvalue',cellstr((chars(1:length(directory)-2))'),...
-        'magvalue',cellstr((chars(1:length(directory)-2))'),...
-        'detPol',cellstr((chars(1:length(directory)-2))'));
-    
-    % For loop to load in the spectrum and assign them to the 'data'
-    % structure sequentially. Because there may be other files in this folder
-    % there will be extra spaces in the structure.
-    for i = 3:length(directory)
-        if directory(i).isdir == 1
-            subfolder = dir([path '\' directory(i).name]);
-            spectrumfound = 0; %Local feedback
-            for j = 3:length(subfolder) %Search the subfolder for any files that have 'spectrum' in them
-                split1 = strsplit(subfolder(j).name, ' ');
-                isspectrumA = ismember(split1, 'spectrum');
-                isspectrumB = ismember(split1, 'Spectrum');
-                if any( [isspectrumA isspectrumB] )
-                    k = j;
-                    spectrumfound = 1;
-                end
-            end
-            
-            if spectrumfound == 0 %If no spectrum file is found
-                cprintf('err', ['\nERROR: There is no spectrum file in ' directory(i).name ' .\n']);
-                beep; return
-            end
-            
-            isUNprocessed = ismember(split1, '(unprocessed)');
-            if any(isUNprocessed)
-                fprintf(1, ['\nFinal processing done on the following scans:\n']);
-                % Data not fully processed, open GUI to let user finish
-                for l = 3:length(subfolder)
-                    split1a = strsplit(subfolder(l).name, '.');
-                    isfigure = ismember(split1a, 'fig');
-                    if any(isfigure) %Open the figure
-                        open([ path '\' directory(i).name '\' subfolder(l).name ])
-                        uiwait()
-                        
-                        % Go back through and delete the unprocessed files
-                        newsubfolder = dir([path '\' directory(i).name]);
-                        for m = length(newsubfolder):-1:3
-                            split1b = strsplit(newsubfolder(m).name, ' ');
-                            isUNprocessed = ismember(split1b, '(unprocessed)');
-                            if any(isUNprocessed)
-                                delete([ path '\' directory(i).name '\' newsubfolder(m).name ])
-                                newsubfolder = dir([path '\' directory(i).name]);
-                            end
-                        end
-                    end
-                end
-                subfolder = newsubfolder;
-                pause(3)
-            end
-            % Data now fully analyzed, so load it in
-            load([ path '\' directory(i).name '\' subfolder(k).name ], 'x', 'y', 'sy');
-            data(i-2).filename = directory(i).name; %Loads in the filename
-            data(i-2).x = x;
-            data(i-2).y = y;
-            data(i-2).sy = sy;
-        else
-            continue,
-        end
-    end
-    
-    % This loop goes through in reverse order to delete the parts of the 'data'
-    % structure that were left unused.
-    for i = length(data):-1:1
-        if ischar(data(i).x) == 1
-            data(i)=[];
-        end
-    end
-    
-    % Define number of total scans as N.
+    % Define total number of scans as N
     N = length(data);
     
     fprintf(1, ['\n' num2str(N) ' RPLE spectra loaded in:\n']);
     
-%% Determining if scans are reference, AC, magnet, or AC magnet, and extract values
+%% Extract the parameter values for each scan
+    
+    data = extractParams(data);
+    
+%% Determine type of scans
+    
+    
+    
+    %% Determining if scans are reference, AC, magnet, or AC magnet, and extract values
     % This section parses the filename strings to look for a strings of
     % 'reference', 'AC', and magnet.
     
