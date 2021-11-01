@@ -11,7 +11,7 @@ function RPLE_Analysis_ver8_0(varargin)
 % the scan indices. The plotarrays structure contains the same information,
 % but instead is organized to contain a single value for all scans.
 % 
-% ******* ver7.0 (10/29/21) **********
+% ******* ver7.0 (11/2/21) **********
 % UPDATES:
 % 
 % This version will be a complete overhaul to allow for generalized
@@ -105,179 +105,45 @@ clc;
     fprintf(1, ['\n' num2str(N) ' RPLE spectra loaded in:\n']);
     
 %% Extract the parameter values for each scan
-    
     data = extractParams(data);
     
-%% Determine type of scans
-    
-    
-    
-    %% Determining if scans are reference, AC, magnet, or AC magnet, and extract values
-    % This section parses the filename strings to look for a strings of
-    % 'reference', 'AC', and magnet.
-    
-    % Array for scan type, 0 means reference, 1 means AC, 2 means magnet,
-    % and 3 means AC magnet.
-    scantype = zeros(1, N);
-    
-    for i = 1:N
-        split2 = strsplit(data(i).filename, ' ');
-        % Type of scan.
-        refscanA = ismember(split2,'reference');
-        refscanB = ismember(split2,'Reference');
-        ACscanA = ismember(split2,'AC');
-        ACscanB = ismember(split2,'ac');
-        magscanA = ismember(split2,'magnet');
-        magscanB = ismember(split2,'Magnet');
-        if any( [refscanA refscanB] ) %reference scan
-            scantype(i) = 0;
-            
-            % Populate data array with scan values.
-            data(i).ACvalue = 0;
-            data(i).magvalue = 0;
-            
-        elseif any( [ACscanA ACscanB] ) && sum(magscanA) == 0 && sum(magscanB) == 0 %AC scan
-            scantype(i) = 1;
-            
-            % Extract AC Stark laser power.
-            if any(ACscanA)
-                ind = find(ACscanA == 1);
-            elseif any(ACscanB)
-              	ind = find(ACscanB == 1);
-            end
-            % Populate data array with scan values.
-            data(i).ACvalue = str2num(cell2mat(split2(ind+1)));
-            data(i).magvalue = 0;
-            
-        elseif any( [magscanA magscanB] ) && sum(ACscanA) == 0 && sum(ACscanB) == 0 %magnet scan
-            scantype(i) = 2;
-            
-            % Extract magnetic field strength.
-            if any(magscanA)
-                ind = find(magscanA == 1);
-            elseif any(magscanB)
-                ind = find(magscanB == 1);
-            end
-            % Populate data array with scan values.
-            data(i).ACvalue = 0;
-            data(i).magvalue = str2num(cell2mat(split2(ind+1)));
-            
-        elseif any( [ACscanA ACscanB] ) && any( [magscanA magscanB] ) %AC magnet scan
-            scantype(i) = 3;
-            
-            % Extract AC Stark laser power.
-            if any(ACscanA)
-                ind = find(ACscanA == 1);
-            elseif any(ACscanB)
-                ind = find(ACscanB == 1);
-            end
-            data(i).ACvalue = str2num(cell2mat(split2(ind+1)));
-            % Extract magnetic field strength.
-            if any(magscanA)
-                ind = find(ACscanA == 1);
-            elseif any(magscanB)
-                ind = find(ACscanB == 1);
-            end
-            data(i).magvalue = str2num(cell2mat(split2(ind+1)));
-            
-        else
-            cprintf('err', ['\nERROR: Folder ' data(i).filename ' is not specified as reference, AC, magnet, or ACmagnet.\n']);
-            beep; return
-        end
-        
-        % Detection polarization.
-        X = any(ismember(split2,'X'));
-        Y = any(ismember(split2,'Y'));
-        D = any(ismember(split2,'D'));
-        A = any(ismember(split2,'A'));
-        R = any(ismember(split2,'R'));
-        L = any(ismember(split2,'L'));
-        if X
-            data(i).detPol = 'X';
-        elseif Y
-            data(i).detPol = 'Y';
-        elseif D
-            data(i).detPol = 'D';
-        elseif A
-            data(i).detPol = 'A';
-        elseif R
-            data(i).detPol = 'R';
-        elseif L
-            data(i).detPol = 'L';
-        end
-    end
+%% Determine type of scan
+    % scanType: 0 means reference, 1 means AC, 2 means magnet, 3 means AC
+    % magnet, and 4 means not AC Stark data.
+    scanType = determineScanType(data);
     
     % Determine the number of reference and AC scans.
-    Nref = sum(ismember(scantype,0));
-    NAC = sum(ismember(scantype,1));
-    Nmag = sum(ismember(scantype,2));
-    NACmag = sum(ismember(scantype,3));
+    Nref = sum(ismember(scanType,0));
+    NAC = sum(ismember(scanType,1));
+    Nmag = sum(ismember(scanType,2));
+    NACmag = sum(ismember(scanType,3));
+    Nother = sum(ismember(scanType,4));
     
-    fprintf(1, ['\t\t\t\t\t\t\t', num2str(Nref), ' reference\n']);
-    fprintf(1, ['\t\t\t\t\t\t\t', num2str(NAC), ' AC\n']);
-    fprintf(1, ['\t\t\t\t\t\t\t', num2str(Nmag), ' magnet\n']);
-    fprintf(1, ['\t\t\t\t\t\t\t', num2str(NACmag), ' AC magnet\n']);
-    
-%% Determine if program ran previously
-    warning('off','all') %Turn warnings off so matlab does not spit one if the variables below are not found
-    
-    ranbefore = 0;
-    userenteredbefore = 0;
-    for i = 3:length(directory)
-        split2a = strsplit(directory(i).name, ' ');
-        if length(split2a) > 1 %If there are no spaces split2a{end-1}=0 and there is an error, so avoid this
-            if strcmp([split2a{end-1} ' ' split2a{end}], 'RPLE data.mat')
-                ranbefore = 1;
-                load([ path '\' directory(i).name ], 'usertolerance', 'userdata', 'userdatalabel');
-                usertolenteredbefore = exist('usertolerance'); %Incase older version of program has been ran before that did not save usertolerance
-                userenteredbefore = exist('userdata'); %Incase program has been ran before but user chose not to enter data
-            else
-                continue;
-            end
-        end
+    if Nother ~= 0
+        fprintf(1, ['\t\t\t\t\t\t\t', num2str(Nother), ' non AC Stark scans\n']);
+    else
+        fprintf(1, ['\t\t\t\t\t\t\t', num2str(Nref), ' reference\n']);
+        fprintf(1, ['\t\t\t\t\t\t\t', num2str(NAC), ' AC\n']);
+        fprintf(1, ['\t\t\t\t\t\t\t', num2str(Nmag), ' magnet\n']);
+        fprintf(1, ['\t\t\t\t\t\t\t', num2str(NACmag), ' AC magnet\n']);
     end
     
-%% Fitting with Lorentzian(s) and extracting parameters
-    % Array for feedback on number of peaks in each spectrum.
-    numpeaks = zeros(1, N);
-    
-    % Create an array called 'fitvalues' for all of the fit parameters.
-    fitvalues = struct('filename',cellstr((chars(1:length(directory)-2))'),...
-            'w0s',cellstr((chars(1:length(directory)-2))'),...
-            'linewidths',cellstr((chars(1:length(directory)-2))'),...
-            'heights',cellstr((chars(1:length(directory)-2))'),...
-            'areas',cellstr((chars(1:length(directory)-2))'),...
-            'B',cellstr((chars(1:length(directory)-2))'));
-    
-    % Define the Lorentzian function.
-    Lorentz = @(A,gamma,a0,B,x)...
-        (A/pi)*(0.5*gamma)*(((x-a0).^2+0.25*(gamma^2)).^-1)+B;
-    
-    % Define the sum of two Lorentzians as a function.
-    Lorentz2 = @(A,A2,gamma,gamma2,a0,a02,B,x)...
-        (A/pi)*(0.5*gamma)*(((x-a0).^2+0.25*(gamma^2)).^-1)+...
-        (A2/pi)*(0.5*gamma2)*(((x-a02).^2+0.25*(gamma2^2)).^-1)+B;
-    
-    % Define a global feedback variable to know if any scans are fit with
-    % the sum of two Lorentzians. And if any scans could not be fit well.
-    feedbackglobal = 0;
-    
-    % Set a value for tolerance used to decide how many peaks to fit with.
+%% Determine value to use for fitting tolerance
     % If the program has been ran before provide option to choose the same.
-    % Two different dialog boxes may appear based on if ranbefore.
-    if ranbefore == 0 || (ranbefore == 1 && usertolenteredbefore == 0)
-        answertol = questdlg(sprintf([ 'What value for user tolerance would you like to use?'...
-            '\n\n0.92 is default'...
-            '\n0.6 to fit with one peak (Linear AC or only R/L detection)' ]),...
-            'User tolerance value entry',...
-            '0.92', '0.60', 'Custom', '0.92');
-    elseif ranbefore == 1 && usertolenteredbefore == 1
+    if ranBefore(path)
+        [~, usertolerance] = ranBefore(path);
         answertol = questdlg(sprintf([ 'What value for user tolerance would you like to use?'...
             '\n\n0.92 is default'...
             '\n0.6 to fit with one peak (Linear AC or only R/L detection)'...
             '\n' num2str(usertolerance) ' is previously entered value' ]),...
             'User tolerance value entry',...
             '0.92', num2str(usertolerance), 'Custom', num2str(usertolerance));
+    else
+        answertol = questdlg(sprintf([ 'What value for user tolerance would you like to use?'...
+            '\n\n0.92 is default'...
+            '\n0.6 to fit with one peak (Linear AC or only R/L detection)' ]),...
+            'User tolerance value entry',...
+            '0.92', '0.60', 'Custom', '0.92');
     end
     
     % Assign the value the user selected.
@@ -293,8 +159,25 @@ clc;
             answercustomtol = inputdlg('User tolerance value:',...
                 'Custom user tolerance value entry',...
                 [1 50]);
-            usertolerance = str2num(answercustomtol{1});
+            usertolerance = str2double(answercustomtol{1});
     end
+    
+%% Fitting with Lorentzian(s) and extracting parameters
+    % Array for feedback on number of peaks in each spectrum
+    numPeaks = zeros(1, N);
+    
+    % Create an array called 'fitvalues' for all of the fit parameters
+    chars = char(1:N);
+    fitvalues = struct('filename',cellstr((chars(1:N))'),...
+            'w0s',cellstr((chars(1:N))'),...
+            'linewidths',cellstr((chars(1:N))'),...
+            'heights',cellstr((chars(1:N))'),...
+            'areas',cellstr((chars(1:N))'),...
+            'B',cellstr((chars(1:N))'));
+    
+    % Define a global feedback variable to know if any scans are fit with
+    % the sum of two Lorentzians. And if any scans could not be fit well.
+    feedbackglobal = 0;
     
     fprintf(1, '\nFitting progress:\n');
     
@@ -310,133 +193,79 @@ clc;
         case 'Cancel'
             cprintf('err', '\nERROR: Please select either yes or no when asked if you would like to fit scans manually.\n');
             beep; return
-        case '' %User closed the dialog box
+        case '' % User closed the dialog box
             cprintf('err', '\nERROR: Please select either yes or no when asked if you would like to fit scans manually.\n');
             beep; return
-        case 'Yes' %This is important data the user would like to check each fit manually.
+        case 'Yes' % This is important data the user would like to check each fit manually
             manualfit = 1;
     end
     
-    % The for loop to fit all of the spectra.
+    % For loop to fit all of the spectra
     for i = 1:N
         fitvalues(i).filename = data(i).filename;
         
-        xdata = data(i).x;
-        ydata = data(i).y;
-        yerr = data(i).sy;
+        % Data for fit
+        xData = data(i).x;
+        yData = data(i).y;
+        yErr = data(i).sy;
         
-        % Here are the automated guesses for the 4 parameters, the first two are
-        % straightforward. For the guess for gamma the FWHM is approximated based
-        % on the data.
-    
-        % Added (6/14/18): Changed the guess for A1 (area) by simply solving the equation
-        % analytically like a normal person.
-        % Changed (4/19/21): Used additional output from max() to find index of
-        % max int point, rather than find() function.
-        [~, maxIntIndex] = max(ydata);
-        a1 = xdata(maxIntIndex);
-        B1 = min(ydata);
+        % Fit with a single Lorentzian
+        [f, gof, guess] = fitLorentzian(xData, yData, yErr);
         
-        halfmax = 0.5*(max(ydata)+min(ydata));
-        index1 = find(ydata >= halfmax, 1, 'first');
-        index2 = find(ydata >= halfmax, 1, 'last');
-        gamma1 = xdata(index2)-xdata(index1);
-        
-        A1 = 0.5*pi*gamma1*(max(ydata)-B1);
-        
-        % Fit with a single Lorentzian.
-        [f,gof] = fit(xdata,ydata,Lorentz,'StartPoint',[A1, gamma1, a1, B1],'Weights',max(yerr)./yerr);
-        
-        % Evaluate the fits rsquared value to see if fitting with a sum of
-        % two Lorentzians is warranted.
-        badfit = 0;
-        
-        % Determine whether to fit with two or one Lorentzians based on
-        % detection polarization.
-        if (data(i).detPol == 'X') || (data(i).detPol == 'Y') %Fit X and Y detection with 2 peaks
+        % Control fits based on detection polarization
+        if (data(i).detPol == 'X') || (data(i).detPol == 'Y') % Fit X and Y detection with 2 peaks
             tolerance = usertolerance;
-        elseif (data(i).detPol == 'R') || (data(i).detPol == 'L') %Fit R and L detection with 1 peak
+        elseif (data(i).detPol == 'R') || (data(i).detPol == 'L') % Fit R and L detection with 1 peak
             tolerance = 0.6;
         else
             tolerance = usertolerance;
         end
         
-        if any(scantype(i) == [1 2 3]) && gof.rsquare <= (tolerance + 0.077)
-            feedbackglobal = 1; %Global knowledge of if statement outcome
+        % Evaluate rsquared to see if need to fit with 2 Lorentzians
+        badfit = 0;
+        if any(scanType(i) == [1 2 3]) && gof.rsquare <= tolerance
+            feedbackglobal = 1; % Global knowledge of if any scans are fit with 2 Lorentzians
             
-            minPeak = 12000;
-            [t,q] = findpeaks(ydata, 'NPeaks', 2, 'MinPeakProminence', minPeak);
+            % Fit the data with a sum of two Lorentzians
+            [f, gof, guess] = fit2Lorentzians(xData, yData, yErr);
             
-            j = 0;
-            while isempty(t)
-                j = j+100;
-               [t,q] = findpeaks(ydata, 'NPeaks', 2, 'MinPeakProminence', minPeak-j);
-            end
-            
-            % Fit the data with a sum of two Lorentzians.
-            if length(q) == 1 %findpeaks() finds only a single peak
-                q1 = [ q-1 q-1 ];
-                t1 = [ t t ];
-                
-                a2 = xdata(q1(1));
-                a3 = xdata(q1(2)) + gamma1/4;
-                gamma2 = gamma1/2;
-                
-                % These guesses come from plugging in the two peak points into
-                % the sum of two Lorentzians, and then solving.
-                A2 = (pi*gamma2*(4*(a2-a3).^2+gamma2.^2)*(-4*(B1-t1(1))*(a2-a3).^2+(t1(1)-t1(2))*gamma2.^2))/(...
-                    8*(a2-a3).^2*(4*(a2-a3).^2+gamma2.^2)+8*(a2-a3).^2*gamma2.^2);
-                A3 = -(pi*(4*(B1-t1(2))*(a2-a3).^2+(t1(1)-t1(2))*gamma2.^2)*gamma2*(4*(a2-a3).^2+gamma2.^2))/(...
-                    8*(a2-a3).^2*(4*(a2-a3).^2+gamma2^2)+8*(a2-a3).^2*gamma2.^2);
-                
-                %Fit with a sum of two Lorentzians.
-                [f,gof] = fit(xdata,ydata,Lorentz2,'StartPoint',[A2, A3, gamma2, gamma2, a2, a3, B1],'Weights',max(yerr)./yerr);
-                
-            elseif length(q) == 2 %findpeaks() finds two peaks.
-                q2 = [ q(1)-1 q(2)-1 ];
-
-                a2 = xdata(q2(1));
-                a3 = xdata(q2(2));
-                gamma2 = gamma1/5;
-                
-                % These guesses come from pluggin in the two peak points into
-                % the sum of two Lorentzians, and then solving.
-                A2 = (pi*gamma2*(4*(a2-a3).^2+gamma2.^2)*(-4*(B1-t(1))*(a2-a3).^2+(t(1)-t(2))*gamma2.^2))/(...
-                    8*(a2-a3).^2*(4*(a2-a3).^2+gamma2.^2)+8*(a2-a3).^2*gamma2.^2);
-                A3 = -(pi*(4*(B1-t(2))*(a2-a3).^2+(t(1)-t(2))*gamma2.^2)*gamma2*(4*(a2-a3).^2+gamma2.^2))/(...
-                    8*(a2-a3).^2*(4*(a2-a3).^2+gamma2^2)+8*(a2-a3).^2*gamma2.^2);
-                
-                %Fit with a sum of two Lorentzians.
-                [f,gof] = fit(xdata,ydata,Lorentz2,'StartPoint',[A2, A3, gamma2, gamma2, a2, a3, B1],'Weights',max(yerr)./yerr);
-            end
-            
-            % Check to see if the fit is good.
+            % Check to see if the fit is good
             if gof.rsquare <= tolerance
                 badfit = 1;
                 fprintf(1, ['\t\t\t\t' data(i).filename ' has not been fit well\n']);
             end
             
-            % Set the numpeaks to be 0 for reference, 1 for AC or magnet
-            % with 1 peak, and 2 for AC or magnet with 2 peaks. This takes
-            % over some of the functionality of scantype from previous
-            % versions, as we now have more possibilites for scantype.
-            numpeaks(i) = 2;
-        elseif scantype(i) == 0 || ( any(scantype(i) == [1 2 3]) && gof.rsquare >= (tolerance + 0.077) )
-            numpeaks(i) = 1;
+            % Set the number of peaks
+            numPeaks(i) = 2;
+        else
+            numPeaks(i) = 1;
         end
         
-        % Plot the raw data with fits.
+        % Plot the raw data with fits
         figure('Name', data(i).filename,'WindowStyle', 'docked', 'numbertitle', 'off');
         hold on
-        h0 = errorbar(xdata,ydata,yerr,'b.','Capsize',0.1);
+        h0 = errorbar(xData,yData,yErr,'b.','Capsize',0.1);
         h1 = plot(f);
         
-        % If the fit is bad, show the guessed Lorentzians.
+        % Define the Lorentzian function for plotting
+        Lorentz = @(A,gamma,x0,B,x)...
+            (A/pi)*(0.5*gamma)*(((x-x0).^2+0.25*(gamma^2)).^-1)+B;
+        
+        % Define the sum of two Lorentzians for plotting
+        Lorentz2 = @(A1,A2,gamma1,gamma2,x01,x02,B,x)...
+            (A1/pi)*(0.5*gamma1)*(((x-x01).^2+0.25*(gamma1^2)).^-1)+...
+            (A2/pi)*(0.5*gamma2)*(((x-x02).^2+0.25*(gamma2^2)).^-1)+B;
+        
+        % If the fit is bad, show the guessed Lorentzians
         if badfit == 1 && length(q) == 1
-            h2 = plot(xdata, Lorentz2(A2,A3,gamma2,gamma2,a2,a3,B1,xdata), 'k'); %Guess will appear black
+            h2 = plot(xData,...
+                Lorentz2(guess(1),guess(2),guess(3),guess(4),guess(5),guess(6),guess(7),xData),...
+                'k'); % Guess will appear black
             legend([h0,h1,h2],'data', 'fit', 'guess')
         elseif badfit == 1 && length(q) == 2
-            h2 = plot(xdata, Lorentz2(A2,A3,gamma2,gamma2,a2,a3,B1,xdata), 'g'); %Guess will appear green
+            h2 = plot(xData,...
+                Lorentz2(guess(1),guess(2),guess(3),guess(4),guess(5),guess(6),guess(7),xData),...
+                'g'); % Guess will appear green
             legend([h0,h1,h2],'data', 'fit', 'guess')
         else
             legend([h0,h1],'data','fit')
@@ -446,128 +275,104 @@ clc;
         ylabel('Intensity (arb. units)');
         
         % If the user has specified that this is important data, allow them
-        % to look at the fit and decide if it is good enough.
-        if manualfit == 1 && any(scantype(i) == [1 2 3]) %Only worry about this for non-reference scans
+        % to look at the fit and decide if it is good enough
+        if manualfit == 1 && any(scanType(i) == [1 2 3 4]) % Only worry about this for non-reference scans
             answerfit = questdlg('Is this fit okay?','Manual Fitting');
             
             switch answerfit
-                case 'No' %The fit is bad and the user would like to enter guesses manually
+                case 'No' % The fit is bad and the user would like to enter guesses manually
                     manualbadfit = 1;
                     % Variables to tell how the user would like to refit
-                    % the data.
                     singletosingle = 0;
                     singletodouble = 0;
                     doubletosingle = 0;
                     doubletodouble = 0;
                     
-                    if numpeaks(i) == 1 %This scan fit with a single Lorentzian
-                        % Ask if the user would like to fit with 2
-                        % Lorentzians.
-                        answersingle = questdlg('How many Lorentzians would you like to fit with?',...
-                            'Manual Fitting',...
-                            'One','Two','Two');
-                        
-                        switch answersingle
-                            case 'One' %This seems unlikely, so I will table it unless it comes up
+                    % Ask how many Lorentzians to fit with
+                    answerdouble = questdlg('How many Lorentzians would you like to fit with?',...
+                        'Manual Fitting',...
+                        'One','Two','Two');
+
+                    switch answerdouble
+                        case 'One' % This seems unlikely, so I will table it unless it comes up
+                            if numPeaks(i) == 1
                                 singletosingle = 1;
-                            case ''
-                                cprintf('err', '\nERROR: Please select either yes or no when asked how many Lorentzians to fit with.\n');
-                                beep; return
-                            case 'Two'
-                                singletodouble = 1;
-                                numpeaks(i) = 2;
-                        end
-                        
-                    elseif numpeaks(i) == 2 %This scan fit with a double Lorentzian
-                        % Ask if the user would like to fit with 2
-                        % Lorentzians.
-                        answerdouble = questdlg('How many Lorentzians would you like to fit with?',...
-                            'Manual Fitting',...
-                            'One','Two','Two');
-                        
-                        switch answerdouble
-                            case 'One' %This seems unlikely, so I will table it unless it comes up
+                            elseif numPeaks(i) == 2
                                 doubletosingle = 1;
-                                numpeaks(i) = 1;
-                            case ''
-                                cprintf('err', '\nERROR: Please select either yes or no when asked how many Lorentzians to fit with.\n');
-                                beep; return
-                            case 'Two'
+                                numPeaks(i) = 1;
+                            end
+                        case ''
+                            cprintf('err', '\nERROR: Please select either yes or no when asked how many Lorentzians to fit with.\n');
+                            beep; return
+                        case 'Two'
+                            if numPeaks(i) == 1
+                                singletodouble = 1;
+                                numPeaks(i) = 2;
+                            elseif numPeaks(i) == 2
                                 doubletodouble = 1;
-                        end
-                        
-                    end
+                            end
+                    end   
                 case 'Cancel'
                     cprintf('err', '\nERROR: Please select either yes or no when asked if the fit is okay.\n');
                     beep; return
-                case '' %User closed the dialog box
+                case '' % User closed the dialog box
                     cprintf('err', '\nERROR: Please select either yes or no when asked if the fit is okay.\n');
                     beep; return
-                case 'Yes' %The fit is good, so move on
+                case 'Yes' % The fit is good, so move on
                     manualbadfit = 0;
             end
+            
             % Now we know how many Lorentzians the initial data was fit
             % with, and how many the user would like to manually fit with.
             % Next run a while loop until to refit until the user is
             % satisfied with the results.
             
-            j = 1; %Index the while loop so we know if it is first guess or not
-            while manualbadfit == 1 %Repeat until the user says the fit is good enough
+            while manualbadfit == 1 % Repeat until the user says the fit is good enough
                 answerboxdim = 50;
                 if singletosingle == 1 || doubletosingle == 1 %The user wants to fit with a single Lorentzian
-                    if singletosingle == 1
-                        prompt = {[ 'Guess for A (Previous was ' num2str(A1) '):' ],...
-                            [ 'Guess for gamma (Previous was ' num2str(gamma1) '):' ],...
-                            [ 'Guess for w0 (Previous was ' num2str(a1) '):' ]};
-                        title = 'Manual Guess Entry';
-                        dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
-                        definput = {num2str(A1),num2str(gamma1),num2str(a1)};
-                        opts.Resize = 'on';
-                        opts.WindowStyle = 'normal';
-
-                        answersinglefit = inputdlg(prompt,title,dims,definput,opts);
-                    
-                    elseif doubletosingle == 1 && j == 1
-                        prompt = {[ 'Guess for A (Previous were ' num2str(A2) ', ' num2str(A3) '):' ],...
-                            [ 'Guess for gamma ' num2str(gamma2) ', ' num2str(gamma2) '):' ],...
-                            [ 'Guess for w0 ' num2str(a2) ', ' num2str(a3) ')' ]};
-                        title = 'Manual Guess Entry';
-                        dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
-                        definput = {num2str(A2),num2str(gamma2),num2str(a2)};
-                        opts.Resize = 'on';
-                        opts.WindowStyle = 'normal';
-
-                        answersinglefit = inputdlg(prompt,title,dims,definput,opts);
-                        
-                    elseif doubletosingle == 1 && j > 1
-                        prompt = {[ 'Guess for A (Previous was ' num2str(A1) '):' ],...
-                            [ 'Guess for gamma (Previous was ' num2str(gamma1) '):' ],...
-                            [ 'Guess for w0 (Previous was ' num2str(a1) '):' ]};
-                        title = 'Manual Guess Entry';
-                        dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
-                        definput = {num2str(A1),num2str(gamma1),num2str(a1)};
-                        opts.Resize = 'on';
-                        opts.WindowStyle = 'normal';
-
-                        answersinglefit = inputdlg(prompt,title,dims,definput,opts);
+                    % Previous guesses
+                    if length(guess) == 7 % If previously fit with 2 Lorentzians
+                        A = guess(1);
+                        gamma = guess(3);
+                        x0 = guess(5);
+                        guess(6) = [];
+                        guess(4) = [];
+                        guess(2) = [];
+                    else
+                        A = guess(1);
+                        gamma = guess(2);
+                        x0 = guess(3);
                     end
                     
-                    % Refit single Lorentzian with user guesses.
-                    a1 = str2num(answersinglefit{3});
-                    B1 = min(ydata);
-                    gamma1 = str2num(answersinglefit{2});
-                    A1 = str2num(answersinglefit{1});
+                    % User input
+                    prompt = {[ 'Guess for A (Previous was ' num2str(A) '):' ],...
+                            [ 'Guess for gamma (Previous was ' num2str(gamma) '):' ],...
+                            [ 'Guess for w0 (Previous was ' num2str(x0) '):' ]};
+                    title = 'Manual Guess Entry';
+                    dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
+                    definput = {num2str(A),num2str(gamma),num2str(x0)};
+                    opts.Resize = 'on';
+                    opts.WindowStyle = 'normal';
                     
-                    [f,~] = fit(xdata,ydata,Lorentz,'StartPoint',[A1, gamma1, a1, B1],'Weights',max(yerr)./yerr);
+                    answersinglefit = inputdlg(prompt,title,dims,definput,opts);
+                    
+                    % User guesses
+                    for j = 1:length(answersinglefit)
+                        guess(j) = str2double(answersinglefit{j});
+                    end
+                    guess(4) = min(yData);
+                    
+                    % Refit with user guesses
+                    [f, ~, guess] = fitLorentzian(xData, yData, yErr, 'guess', guess);
                     
                     % Plot the fit again so the user can look at it.
-                    clf %Clear the current figure window
+                    clf % Clear the current figure window
                     hold on
-                    h0 = errorbar(xdata,ydata,yerr,'b.','Capsize',0.1); %Plot in the same figure window, overwriting the old one
+                    h0 = errorbar(xData,yData,yErr,'b.','Capsize',0.1); % Overwrite old figure
                     h1 = plot(f);
                     
                     % Plot the guess as well to aid the user in fitting
-                    h2 = plot(xdata, Lorentz(A1,gamma1,a1,B1,xdata), 'g');
+                    h2 = plot(xData, Lorentz(guess(1),guess(2),guess(3),guess(4),xData), 'g');
                     legend([h0,h1,h2],'data', 'fit', 'guess')
                     
                     % Ask again if the fit is good.
@@ -583,96 +388,73 @@ clc;
                             cprintf('err', '\nERROR: Please select either yes or no when asked if the fit is okay.\n');
                             beep; return
                         case 'Yes'
-                            numpeaks(i) = 1; %Keep track of number of peaks for analysis later on
+                            numPeaks(i) = 1; % Keep track of number of peaks for analysis later on
                             
                             % Get rid of the guess on the plot
                             clf
-                            h0 = errorbar(xdata,ydata,yerr,'b.','Capsize',0.1);
+                            h0 = errorbar(xData,yData,yErr,'b.','Capsize',0.1);
+                            hold on
                             h1 = plot(f);
                             legend([h0,h1],'data', 'fit')
                             
-                            manualbadfit = 0; %Exit the while loop
+                            manualbadfit = 0; % Exit the while loop
                     end
-
                 elseif singletodouble == 1 || doubletodouble == 1 %The user wants to fit with double Lorentzian
-                    if singletodouble == 1 && j == 1
-                        prompt = {[ 'Guess for A1 (Previous was ' num2str(A1) '):' ],...
-                            'Guess for A2 (Previous was NA):',...
-                            [ 'Guess for gamma1 (Previous was ' num2str(gamma1) '):' ],...
-                            'Guess for gamma2 (Previous was NA):',...
-                            [ 'Guess for w01 (Previous was ' num2str(a1) '):' ],...
-                            'Guess for w02 (Previous was NA):',...
-                            [ 'Guess for B (Previous was ' num2str(B1) '):' ]};
-                        title = 'Manual Guess Entry';
-                        dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
-                        definput = {num2str(A1),num2str(A1),num2str(gamma1),num2str(gamma1),...
-                            num2str(a1),num2str(a1),num2str(B1)};
-                        opts.Resize = 'on';
-                        opts.WindowStyle = 'normal';
-
-                        answerdoublefit = inputdlg(prompt,title,dims,definput,opts);
-                        
-                    elseif singletodouble == 1 && j > 1
-                        prompt = {[ 'Guess for A1 (Previous was ' num2str(A2) '):' ],...
-                            [ 'Guess for A2 (Previous was ' num2str(A3) '):' ],...
-                            [ 'Guess for gamma1 (Previous was ' num2str(gamma2) '):' ],...
-                            [ 'Guess for gamma2 (Previous was ' num2str(gamma2) '):' ],...
-                            [ 'Guess for w01 (Previous was ' num2str(a2) '):' ],...
-                            [ 'Guess for w02 (Previous was ' num2str(a3) '):' ],...
-                            [ 'Guess for B (Previous was ' num2str(B1) '):' ]};
-                        title = 'Manual Guess Entry';
-                        dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
-                        definput = {num2str(A2),num2str(A3),num2str(gamma2),num2str(gamma2),...
-                            num2str(a2),num2str(a3),num2str(B1)};
-                        opts.Resize = 'on';
-                        opts.WindowStyle = 'normal';
-
-                        answerdoublefit = inputdlg(prompt,title,dims,definput,opts);
-                        
-                    elseif doubletodouble == 1
-                        if j ==  1
-                           gamma3 = gamma2; 
-                        end
-                        
-                        prompt = {[ 'Guess for A1 (Previous was ' num2str(A2) '):' ],...
-                            [ 'Guess for A2 (Previous was ' num2str(A3) '):' ],...
-                            [ 'Guess for gamma1 (Previous was ' num2str(gamma2) '):' ],...
-                            [ 'Guess for gamma2 (Previous was ' num2str(gamma3) '):' ],...
-                            [ 'Guess for w01 (Previous was ' num2str(a2) '):' ],...
-                            [ 'Guess for w02 (Previous was ' num2str(a3) '):' ],...
-                            [ 'Guess for B (Previous was ' num2str(B1) '):' ]};
-                        title = 'Manual Guess Entry';
-                        dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
-                        definput = {num2str(A2),num2str(A3),num2str(gamma2),num2str(gamma3),...
-                            num2str(a2),num2str(a3),num2str(B1)};
-                        opts.Resize = 'on';
-                        opts.WindowStyle = 'normal';
-
-                        answerdoublefit = inputdlg(prompt,title,dims,definput,opts);
+                    % Previous guesses
+                    if length(guess) == 4 % If previously fit with single Lorentzian
+                        A1 = guess(1);
+                        A2 = 0;
+                        gamma1 = guess(2);
+                        gamma2 = 0;
+                        x01 = guess(3);
+                        x02 = 0;
+                        B = guess(4);
+                    else
+                        A1 = guess(1);
+                        A2 = guess(2);
+                        gamma1 = guess(3);
+                        gamma2 = guess(4);
+                        x01 = guess(5);
+                        x02 = guess(6);
+                        B = guess(7);
                     end
                     
-                    % Refit double Lorentzian with user guesses.
-                    a2 = str2num(answerdoublefit{5});
-                    a3 = str2num(answerdoublefit{6});
-                    gamma2 = str2num(answerdoublefit{3});
-                    gamma3 = str2num(answerdoublefit{4});
+                    % User input
+                    prompt = {[ 'Guess for A1 (Previous was ' num2str(A1) '):' ],...
+                            [ 'Guess for A2 (Previous was ' num2str(A2) '):' ],...
+                            [ 'Guess for gamma1 (Previous was ' num2str(gamma1) '):' ],...
+                            [ 'Guess for gamma2 (Previous was ' num2str(gamma2) '):' ],...
+                            [ 'Guess for w01 (Previous was ' num2str(x01) '):' ],...
+                            [ 'Guess for w02 (Previous was ' num2str(x02) '):' ],...
+                            [ 'Guess for B (Previous was ' num2str(B) '):' ]};
+                    title = 'Manual Guess Entry';
+                    dims = [1 answerboxdim; 1 answerboxdim; 1 answerboxdim; 1 answerboxdim;...
+                        1 answerboxdim; 1 answerboxdim; 1 answerboxdim];
+                    definput = {num2str(A1),num2str(A2),num2str(gamma1),num2str(gamma2),...
+                            num2str(x01),num2str(x02),num2str(B)};
+                    opts.Resize = 'on';
+                    opts.WindowStyle = 'normal';
                     
-                    A2 = str2num(answerdoublefit{1});
-                    A3 = str2num(answerdoublefit{2});
+                    answerdoublefit = inputdlg(prompt,title,dims,definput,opts);
                     
-                    B1 = str2num(answerdoublefit{7});
+                    % User guesses
+                    for j = 1:length(answerdoublefit)
+                        guess(j) = str2double(answerdoublefit{j});
+                    end
                     
-                    %Fit with a sum of two Lorentzians.
-                    [f,~] = fit(xdata,ydata,Lorentz2,'StartPoint',[A2, A3, gamma2, gamma3, a2, a3, B1],'Weights',max(yerr)./yerr);
+                    % Refit with user guesses
+                    [f, ~, guess] = fit2Lorentzians(xData, yData, yErr, 'guess', guess);
                     
                     % Plot the fit again so the user can look at it.
-                    clf %Clear the current figure window
+                    clf % Clear the current figure window
                     hold on
-                    h0 = errorbar(xdata,ydata,yerr,'b.','Capsize',0.1); %Plot in the same figure window, overwriting the old one
+                    h0 = errorbar(xData,yData,yErr,'b.','Capsize',0.1); % Overwrite old figure
                     h1 = plot(f);
                     
                     % Plot the guess as well to aid the user in fitting
-                    h2 = plot(xdata, Lorentz2(A2,A3,gamma2,gamma3,a2,a3,B1,xdata), 'g');
+                    h2 = plot(xData,...
+                        Lorentz2(guess(1),guess(2),guess(3),guess(4),guess(5),guess(6),guess(7),xData),...
+                        'g');
                     legend([h0,h1,h2],'data', 'fit', 'guess')
                     
                     % Ask again if the fit is good.
@@ -688,19 +470,18 @@ clc;
                             cprintf('err', '\nERROR: Please select either yes or no when asked if the fit is okay.\n');
                             beep; return
                         case 'Yes'
-                            numpeaks(i) = 2; %Keep track of number of peaks for analysis later on
+                            numPeaks(i) = 1; % Keep track of number of peaks for analysis later on
                             
                             % Get rid of the guess on the plot
                             clf
+                            h0 = errorbar(xData,yData,yErr,'b.','Capsize',0.1);
                             hold on
-                            h0 = errorbar(xdata,ydata,yerr,'b.','Capsize',0.1);
                             h1 = plot(f);
-                            legend([h0,h1],'data','fit')
+                            legend([h0,h1],'data', 'fit')
                             
-                            manualbadfit = 0; %Exit the while loop
+                            manualbadfit = 0; % Exit the while loop
                     end
                 end
-                j = j+1; %Index the while loop
             end
         end
         
@@ -711,7 +492,7 @@ clc;
         values = coeffvalues(f);
         intervals = confint(f);
         
-        if numpeaks(i) == 1
+        if numPeaks(i) == 1
             % Working out height from fitting parameters.
             h = (2*values(1))/(pi*values(2)) + values(4);
             hint1 = (2*intervals(1,1))/(pi*values(2)) + values(4);
@@ -723,7 +504,7 @@ clc;
             fitvalues(i).linewidths = [ values(2) intervals(1,2) intervals(2,2) ];
             fitvalues(i).w0s = [ values(3) intervals(1,3) intervals(2,3) ];
             fitvalues(i).B = [ values(4) intervals(1,4) intervals(2,4) ];
-        elseif numpeaks(i) == 2
+        elseif numPeaks(i) == 2
             % Working out height from fitting parameters.
             h1 = (2*values(1))/(pi*values(3)) + (values(2)*values(4))/(2*pi*((values(5)-values(6))^2+(0.5*values(4))^2)) + values(7);
             h1int1 = (2*intervals(1,1))/(pi*values(3)) + (values(2)*values(4))/(2*pi*((values(5)-values(6))^2+(0.5*values(4))^2)) + values(7);
@@ -751,14 +532,15 @@ clc;
     end
     
     
-    % Delete parts of 'fitvalues' that were unused.
+    % Delete parts of 'fitvalues' that were unused (do I still need this?)
     for i = length(fitvalues):-1:1
         if ischar(fitvalues(i).w0s) == 1
             fitvalues(i)=[];
         end
     end
     
-    % Check to confirm that data were loaded and fit appropriately.
+    % Check to confirm that data were loaded and fit appropriately (do I
+    % still need this)
     if N ~= length(fitvalues)
         cprintf('err', '\nERROR: The length of the data array does not match the length of the fitvalues array.\n');
         beep; return
@@ -871,7 +653,7 @@ clc;
     
     % For loop to run through all scans
     for i = 1:N
-        if scantype(i) == 0 %Reference scans
+        if scanType(i) == 0 %Reference scans
             plotarrays.indices.ref(i) = i;
             
             plotarrays.w0s.ref(i) = fitvalues(i).w0s(1);
@@ -886,7 +668,7 @@ clc;
             plotarrays.areas.referr(i) = fitvalues(i).areas(3)-fitvalues(i).areas(2);
             plotarrays.B.referr(i) = fitvalues(i).B(3)-fitvalues(i).B(2);
             
-        elseif scantype(i) == 1 %AC scan
+        elseif scanType(i) == 1 %AC scan
             plotarrays.indices.AC(i) = i;
             plotarrays.ACvalues.AC(i) = data(i).ACvalue;
             
@@ -902,7 +684,7 @@ clc;
             plotarrays.areas.ACerr(i) = fitvalues(i).areas(3)-fitvalues(i).areas(2);
             plotarrays.B.ACerr(i) = fitvalues(i).B(3)-fitvalues(i).B(2);
             
-            if numpeaks(i) == 2 %Fit with 2 Lorentzians
+            if numPeaks(i) == 2 %Fit with 2 Lorentzians
                 plotarrays.indices.AC(i + (N-1)) = i;
                 plotarrays.ACvalues.AC(i + (N-1)) = data(i).ACvalue;
                 
@@ -919,7 +701,7 @@ clc;
                 plotarrays.B.ACerr(i + (N-1)) = plotarrays.B.ACerr(i);
             end
             
-        elseif scantype(i) == 2 %Magnet scan
+        elseif scanType(i) == 2 %Magnet scan
             plotarrays.indices.mag(i) = i;
             plotarrays.magvalues.mag(i) = data(i).magvalue;
             
@@ -935,7 +717,7 @@ clc;
             plotarrays.areas.magerr(i) = fitvalues(i).areas(3)-fitvalues(i).areas(2);
             plotarrays.B.magerr(i) = fitvalues(i).B(3)-fitvalues(i).B(2);
             
-            if numpeaks(i) == 2 %Fit with 2 Lorentzians
+            if numPeaks(i) == 2 %Fit with 2 Lorentzians
                 plotarrays.indices.mag(i + (N-1)) = i;
                 plotarrays.magvalues.mag(i + (N-1)) = data(i).magvalue;
                 
@@ -952,7 +734,7 @@ clc;
                 plotarrays.B.magerr(i + (N-1)) = plotarrays.B.magerr(i);
             end
             
-        elseif scantype(i) == 3 %ACmagnet scan
+        elseif scanType(i) == 3 %ACmagnet scan
             plotarrays.indices.ACmag(i) = i;
             plotarrays.ACvalues.ACmag(i) = data(i).ACvalue;
             plotarrays.magvalues.ACmag(i) = data(i).magvalue;
@@ -969,7 +751,7 @@ clc;
             plotarrays.areas.ACmagerr(i) = fitvalues(i).areas(3)-fitvalues(i).areas(2);
             plotarrays.B.ACmagerr(i) = fitvalues(i).B(3)-fitvalues(i).B(2);
             
-            if numpeaks(i) == 2 %Fit with 2 Lorentzians
+            if numPeaks(i) == 2 %Fit with 2 Lorentzians
                 plotarrays.indices.ACmag(i + (N-1)) = i;
                 plotarrays.ACvalues.ACmag(i + (N-1)) = data(i).ACvalue;
                 plotarrays.magvalues.ACmag(i + (N-1)) = data(i).magvalue;
@@ -1178,9 +960,9 @@ clc;
         refmean = zeros(1, 2*N);
         
         for i = 1:N %iterate through all non reference scans
-            if any(scantype(i) == [1 2 3]) && numpeaks(i) == 1
+            if any(scanType(i) == [1 2 3]) && numPeaks(i) == 1
                 refmean(i) = fitvalues(i-1).w0s(1);
-            elseif any(scantype(i) == [1 2 3]) && numpeaks(i) == 2
+            elseif any(scanType(i) == [1 2 3]) && numPeaks(i) == 2
                 % First peak of nonref scans
                 refmean(i) = fitvalues(i-1).w0s(1);
                 % Second peak of nonref scans
@@ -1482,10 +1264,10 @@ clc;
     %Save specific variables from the workspace.
     if feedbackglobal == 0
         save([ path '\' folder{1}, ' RPLE data', '.mat'], 'data', 'fitvalues', 'refmean',...
-            'NAC', 'Nref', 'Nmag', 'NACmag', 'scantype', 'numpeaks', 'usertolerance', 'plotarrays');
+            'NAC', 'Nref', 'Nmag', 'NACmag', 'scanType', 'numpeaks', 'usertolerance', 'plotarrays');
     elseif feedbackglobal == 1
         save([ path '\' folder{1}, ' RPLE data', '.mat'], 'data', 'fitvalues', 'refmean',...
-            'NAC', 'Nref', 'Nmag', 'NACmag', 'scantype', 'numpeaks', 'usertolerance', 'plotarrays');
+            'NAC', 'Nref', 'Nmag', 'NACmag', 'scanType', 'numpeaks', 'usertolerance', 'plotarrays');
     end
     
     fprintf(1, '\nData and figures saved!\n');
