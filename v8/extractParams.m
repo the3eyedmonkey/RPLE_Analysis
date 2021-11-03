@@ -4,8 +4,11 @@ function data = extractParams(data)
 % places them into the data structure.
 
 %% 
+    % Total number of scans
+    N = length(data);
+    
     % Run through all scans
-    for i = 1:length(data)
+    for i = 1:N
         % Split the folder name by spaces
         split = strsplit(data(i).filename, ' ');
         % Iterate through the split

@@ -1,10 +1,13 @@
-function data = loadRPLEdata(path)
+function [data, err] = loadRPLEdata(path)
 %% loadRPLEdata.m
 % Load in all of the RPLE data contained in the subfolders of the specified
 % directory (path). If any of the data has not yet been processed, have the
-% user process it.
+% user process it using the single spectrum GUI.
     
 %% 
+    % Let calling program know if there is an error
+    err = 0;
+    
     % Load in the structure for the folder with all of the data folders
     directory = dir(path);
     
@@ -39,6 +42,7 @@ function data = loadRPLEdata(path)
             
             if spectrumfound == 0 % If no spectrum file is found
                 cprintf('err', ['\nERROR: There is no spectrum file in ' directory(i).name ' .\n']);
+                err = 1;
                 beep; return
             end
             
@@ -71,8 +75,11 @@ function data = loadRPLEdata(path)
             % Data now fully analyzed, so load it in
             load([ path '\' directory(i).name '\' subfolder(k).name ], 'x', 'y', 'sy');
             data(i-2).filename = directory(i).name; % Loads in the filename (foldername)
-            data(i-2).x = 299792458./x; % Data in wavelength
-            %data(i-2).x = x; % Data in frequency
+            if x(1) < 3000 % Data in wavelength
+                data(i-2).x = 299792458./x; % Convert to frequency
+            else % Data in frequency
+                data(i-2).x = x;
+            end
             data(i-2).y = y;
             data(i-2).sy = sy;
         else
