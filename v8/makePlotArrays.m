@@ -10,26 +10,31 @@ function plotarrays = makePlotArrays(data, fitvalues, scanType, numPeaks)
     % Create AC plotarrays structure
     chars = char(1:N);
     plotarrays = struct('indices',struct('ref',chars(1),'AC',chars(1),'mag',chars(1),'ACmag',chars(1),...
-            'res',chars(1),'HeNe',chars(1)),...
+            'res',chars(1),'HeNe',chars(1),'resHeNe',chars(1)),...
         'ACvalues',struct('AC',chars(1),'ACmag',chars(1)),...
         'magvalues',struct('mag',chars(1),'ACmag',chars(1)),...
         'resODs',chars(1),...
         'HeNeODs',chars(1),...
         'w0s',struct('ref',chars(1),'referr',chars(1),'AC',chars(1),'ACerr',chars(1),...
             'mag',chars(1),'magerr',chars(1),'ACmag',chars(1),'ACmagerr',chars(1),...
-            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1)),...
+            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1),...
+            'resHeNe',chars(1),'resHeNeerr',chars(1)),...
         'linewidths',struct('ref',chars(1),'referr',chars(1),'AC',chars(1),'ACerr',chars(1),...
             'mag',chars(1),'magerr',chars(1),'ACmag',chars(1),'ACmagerr',chars(1),...
-            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1)),...
+            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1),...
+            'resHeNe',chars(1),'resHeNeerr',chars(1)),...
         'heights',struct('ref',chars(1),'referr',chars(1),'AC',chars(1),'ACerr',chars(1),...
             'mag',chars(1),'magerr',chars(1),'ACmag',chars(1),'ACmagerr',chars(1),...
-            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1)),...
+            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1),...
+            'resHeNe',chars(1),'resHeNeerr',chars(1)),...
         'areas',struct('ref',chars(1),'referr',chars(1),'AC',chars(1),'ACerr',chars(1),...
             'mag',chars(1),'magerr',chars(1),'ACmag',chars(1),'ACmagerr',chars(1),...
-            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1)),...
+            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1),...
+            'resHeNe',chars(1),'resHeNeerr',chars(1)),...
         'B',struct('ref',chars(1),'referr',chars(1),'AC',chars(1),'ACerr',chars(1),...
             'mag',chars(1),'magerr',chars(1),'ACmag',chars(1),'ACmagerr',chars(1),...
-            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1)));
+            'res',char(1),'reserr',chars(1),'HeNe',chars(1),'HeNeerr',chars(1),...
+            'resHeNe',chars(1),'resHeNeerr',chars(1)));
     
     % Initialize arrays
     fn1 = fieldnames(plotarrays);
@@ -40,13 +45,13 @@ function plotarrays = makePlotArrays(data, fitvalues, scanType, numPeaks)
                 plotarrays.(fn1{i}).(fn2{j}) = zeros(1, 2*N);
             end
         else
-            plotarrays.(fn1{i}) = zeros(1, 2*N);
+            plotarrays.(fn1{i}) = -ones(1, 2*N); % Need to use ones since OD could be 0
         end
     end
     
     % For loop to run through all scans
     for i = 1:N
-        j = i + (N-1); % Index for if 2 Lorentzians
+        j = i + N; % Index for if 2 Lorentzians
         % Check scan type
         if scanType(i) == 0 % Reference scan
             type = 'ref';
@@ -84,9 +89,18 @@ function plotarrays = makePlotArrays(data, fitvalues, scanType, numPeaks)
         elseif scanType(i) == 5 % HeNe OD scan
             type = 'HeNe';
             typeerr = 'HeNeerr';
-            plotarrays.resODs(i) = data(i).resOD;
+            plotarrays.HeNeODs(i) = data(i).HeNeOD;
             if numPeaks(i) == 2 % Fit with 2 Lorentzians
-                plotarrays.HeNeODs(j) = data(i).resOD;
+                plotarrays.HeNeODs(j) = data(i).HeNeOD;
+            end
+        elseif scanType(i) == 6 % HeNe OD scan
+            type = 'resHeNe';
+            typeerr = 'resHeNeerr';
+            plotarrays.resODs(i) = data(i).resOD;
+            plotarrays.HeNeODs(i) = data(i).HeNeOD;
+            if numPeaks(i) == 2 % Fit with 2 Lorentzians
+                plotarrays.resODs(j) = data(i).resOD;
+                plotarrays.HeNeODs(j) = data(i).HeNeOD;
             end
         end
         
@@ -137,7 +151,7 @@ function plotarrays = makePlotArrays(data, fitvalues, scanType, numPeaks)
                     end
                 end
             else
-                if plotarrays.(fn1{j})(i) == 0
+                if plotarrays.(fn1{j})(i) == -1
                     plotarrays.(fn1{j})(i) = [];
                 end
             end
@@ -166,6 +180,18 @@ function plotarrays = makePlotArrays(data, fitvalues, scanType, numPeaks)
     % Check that the ACmagnet arrays are the correct length
     if length(plotarrays.indices.ACmag) ~= length(plotarrays.w0s.ACmag)
         cprintf('err', '\nERROR: The length of ACmagnet plot arrays do not match.\n');
+        beep; return
+    end
+    
+    % Check that the resonant arrays are the correct length
+    if length(plotarrays.indices.res) ~= length(plotarrays.w0s.res)
+        cprintf('err', '\nERROR: The length of resonant plot arrays do not match.\n');
+        beep; return
+    end
+    
+    % Check that the HeNe arrays are the correct length
+    if length(plotarrays.indices.HeNe) ~= length(plotarrays.w0s.HeNe)
+        cprintf('err', '\nERROR: The length of HeNe plot arrays do not match.\n');
         beep; return
     end
     

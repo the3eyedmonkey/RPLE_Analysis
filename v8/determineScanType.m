@@ -9,8 +9,15 @@ function scanType = determineScanType(data)
     % Total number of scans
     N = length(data);
     
-    % scanType: 0 means reference, 1 means AC, 2 means magnet, 3 means AC
-    % magnet, and 4 means other at the moment.
+    % scanType:
+    % 0 reference
+    % 1 AC
+    % 2 magnet
+    % 3 AC magnet
+    % 4 resonant OD
+    % 5 HeNe OD
+    % 6 resonant HeNe OD
+    % 7 other
     scanType = zeros(1, N);
     for i = 1:N
         AC = data(i).ACvalue;
@@ -26,11 +33,13 @@ function scanType = determineScanType(data)
         elseif isnumeric(AC) && isnumeric(mag)
             scanType(i) = 3; % AC magnet
         elseif isnumeric(res) && ~isnumeric(HeNe)
-            scanType(i) = 4; % resonant OD data
+            scanType(i) = 4; % resonant OD
         elseif isnumeric(HeNe) && ~isnumeric(res)
-            scanType(i) = 5; % HeNe OD data
+            scanType(i) = 5; % HeNe OD
+        elseif isnumeric(res) && isnumeric(HeNe)
+            scanType(i) = 6; % resonant HeNe ODs
         else
-            scanType(i) = 6; % All other cases
+            scanType(i) = 7; % All other cases
         end
     end
     

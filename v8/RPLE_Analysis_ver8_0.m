@@ -124,22 +124,26 @@ clc;
     % Excitation laser power scan type
     Nres = sum(ismember(scanType, 4));
     NHeNe = sum(ismember(scanType, 5));
+    NresHeNe = sum(ismember(scanType, 6));
     % All other scan types
-    Nother = sum(ismember(scanType, 6));
+    Nother = sum(ismember(scanType, 7));
     
     % Print number of scans, and determine type of scans
     % First some assertions to check everything makes sense
-    if (Nref + NAC + Nmag + NACmag) ~= 0 && (Nres + NHeNe) ~= 0 && Nother ~= 0
+    if (Nref + NAC + Nmag + NACmag) ~= 0 && (Nres + NHeNe + NresHeNe) ~= 0 && Nother ~= 0
         cprintf('err', '\nERROR: All three types of scans found in the same folder...yikes.\n');
         beep; return
-    elseif (Nref + NAC + Nmag + NACmag) ~= 0 && (Nres + NHeNe) ~= 0
+    elseif (Nref + NAC + Nmag + NACmag) ~= 0 && (Nres + NHeNe + NresHeNe) ~= 0
         cprintf('err', '\nERROR: AC Stark and excitation laser power scans found in the same folder.\n');
         beep; return
     elseif (Nref + NAC + Nmag + NACmag) ~= 0 && Nother ~= 0
         cprintf('err', '\nERROR: AC Stark and "other" scans found in the same folder.\n');
         beep; return
-    elseif (Nres + NHeNe) ~= 0 && Nother ~= 0
+    elseif (Nres + NHeNe + NresHeNe) ~= 0 && Nother ~= 0
         cprintf('err', '\nERROR: Excitation laser power and "other" scans found in the same folder.\n');
+        beep; return
+    elseif (Nres + NHeNe) ~= 0 && NresHeNe ~= 0
+        cprintf('err', '\nERROR: Excitation laser power scans do not makes sense.\n');
         beep; return
     elseif (Nref + NAC + Nmag + NACmag) ~= 0
         ACStarkScans = 1;
@@ -150,13 +154,14 @@ clc;
         fprintf(1, ['\t\t\t\t\t\t\t' num2str(NAC) ' AC\n']);
         fprintf(1, ['\t\t\t\t\t\t\t' num2str(Nmag) ' magnet\n']);
         fprintf(1, ['\t\t\t\t\t\t\t' num2str(NACmag) ' AC magnet\n']);
-    elseif (Nres + NHeNe) ~= 0
+    elseif (Nres + NHeNe + NresHeNe) ~= 0
         ACStarkScans = 0;
         excitationLaserPowerScans = 1;
         otherScans = 0;
         fprintf(1, '\texcitation laser power scans\n');
         fprintf(1, ['\t\t\t\t\t\t\t' num2str(Nres) ' resonant OD\n']);
         fprintf(1, ['\t\t\t\t\t\t\t' num2str(NHeNe) ' HeNe OD\n']);
+        fprintf(1, ['\t\t\t\t\t\t\t' num2str(NresHeNe) ' resonant HeNe OD\n']);
     elseif Nother ~= 0
         ACStarkScans = 0;
         excitationLaserPowerScans = 0;
@@ -265,6 +270,7 @@ clc;
     plotarrays = makePlotArrays(data, fitvalues, scanType, numPeaks);
     
     if ACStarkScans % Analysis specific to AC Stark scans
+        
         % Mean of reference scans
         refmean = mean(plotarrays.w0s.ref);
         % Print the refmean to command line
@@ -287,17 +293,18 @@ clc;
         if NACmag ~= 0
             plots_ACmagnet(plotarrays)
         end
+        
     elseif excitationLaserPowerScans % Analysis specific to excitation laser power scans
+        
         % Make the plots
-        %{
         if Nres ~= 0 && NHeNe == 0 % Resonant OD plots
             plots_res(plotarrays)
-        elseif NHeNe == 0 && Nres == 0 % HeNe OD plots
+        elseif NHeNe ~= 0 && Nres == 0 % HeNe OD plots
             plots_HeNe(plotarrays)
         else % Resonant and HeNe plots
             plots_resHeNe(plotarrays)
         end
-        %}
+        
     elseif otherScans
         % Generalized analysis for non-AC scans goes here
         plotarrays = 'I have no built in functionality for this case...sorry :(';
