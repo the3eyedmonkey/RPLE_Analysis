@@ -6,12 +6,13 @@ function RPLE_Analysis_ver8_0(varargin)
 % Specfically comparing reference and AC scans to determine properties of
 % the AC Stark shift and Dynamic Nuclear Polarization (DNP).
 %  
-% Two main structures are created. The fitvalues structure contains all of the
-% fitting parameters for each individual scan, and can be parsed by using
-% the scan indices. The plotarrays structure contains the same information,
-% but instead is organized to contain a single value for all scans.
+% Two main structures are created. The fitvalues structure contains all of
+% the fitting parameters for each individual scan, and can be parsed by
+% using the scan indices. The plotarrays structure contains the same
+% information, but instead is organized to contain a single value for all
+% scans.
 % 
-% ******* ver8.0 (11/2/21) **********
+% ******* ver8.0 (11/5/21) **********
 % UPDATES:
 % 
 % This version will be a complete overhaul to allow for generalized
@@ -22,53 +23,30 @@ function RPLE_Analysis_ver8_0(varargin)
 % 
 % 
 % PROGRAM OVERVIEW:  (goes roughly section by section)
-% The program asks the user via uigetdir() to specify the
-% path to the folder DIRECTLY ABOVE the folders with individual scan data.
-% You can change the default folder this search starts in on line 98.
+% A spectrum file is looked for in all of the folders in the path
+% directory. Each spectrum and parameter settings is loaded into the data
+% structure.
 % 
-% The program loads all of the spectra into the "data" structure. It does
-% this by searching all of the subfolders for a data file with the string
-% 'spectrum' in the name.
+% There are 3 overall possibilities for type of scans:
+% AC Stark scans: AC Stark laser and/or magnet in use
+% Excitation laser power scans: Resonant OD and/or HeNe OD in use
+% Other: Any other combinations
 % 
-% The program identifies each scan as either reference or AC by reading the
-% name of the folders.
+% Each scan is fit with a single Lorentzian. If the goodness of fit is <
+% tolerance, then the data is fit with a sum of two Lorentzians. If the fit
+% is still bad, then the user fits the data manually. The user can also
+% choose to visually check each fit and confirm the fit is good. All of the
+% fit parameters are placed in the fitvalues structure.
 % 
-% The program determines if the it has been run before for this set of data
-% by searching the directory for the RPLE Analysis Data.m data file.
+% The structure plotarrays is created, which informs on one thing about all
+% scans, whereas the fitvalues structure informs on all things about one
+% scan.
 % 
-% The user is asked to enter a value for the tolerance the program will use
-% to determine if fits are good enough. The user is also asked if this is
-% important data that they would like to fit manually. If the user says no
-% the program runs as normal.
-%
-% Each spectrum is fit with a single Lorentzian, then the gof.rsquared
-% value is evaluated for AC scans to determine if fitting with a sum of two
-% Lorentzians is warrented. This is dependent on detection polarization; X
-% and Y are fit with a double, R and L are fit witht a single.
-%
-% If the user has indicated that this is important data, then the program
-% asks the user to evaluate each fit (excluding references) by eye. If the
-% user says the fit is good then the program continues as normal. If the
-% user says the fit is bad then an interface to enter new guesses appears
-% (the previous guesses are displayed as well). A plot of the new fit with
-% the new guess is shown. This loop repeats until the user says the fit is
-% good, then the program continues as normal.
+% Plots are created for experimental parameters vs. fit parameters. As of
+% now I only have built in functionality for AC Stark and excitation
+% scans.
 % 
-% A structure called plotarrays is created for easy of plotting. Each
-% array can be specified in the following way:
-% plotarrays.fitparameter.(ref or AC)
-% 
-% The user is asked if they would like to manually input some data to plot
-% w0s against. For example power or polarization of AC laser. If the
-% incorrect amount of data is entered, the user is given unlimited tries to
-% enter the correct amount, feedback is provided. If the program has been
-% run before the defualt input for userdata will be the array previously
-% entered.
-% 
-% Plots of (w0s,linewidths,heights,areas) vs. userdata are made with and
-% without shaded regions depicting the FWHM of the peaks for the w0s plot.
-% 
-% The figure and relevant variables are saved.
+% Figures, data, and log file are saved.
 % ***********************************
 
 close all;
@@ -94,6 +72,12 @@ clc;
     % Extract and print the name of the folder the user has selected
     split = strsplit(path, '\');
     folder = split(end);
+    % Use diary to record the command line output to a text file
+    dfile  = [path '\' folder{1} ' RPLE analysis log.txt'];
+    if exist(dfile, 'file')
+        delete(dfile)
+    end
+    diary(dfile)
     fprintf(1, ['\nRPLE_Analysis: ', folder{1}, '\n']);
     
     % Load the data
@@ -105,14 +89,12 @@ clc;
     % Define total number of scans as N
     N = length(data);
     
-    fprintf(1, ['\n' num2str(N) ' RPLE spectra loaded in:']);
+    fprintf(1, ['\n' num2str(N) ' RPLE spectra:']);
     
     % Extract the parameter values for each scan
     data = extractParams(data);
     
 %% Determine type of scan
-    % scanType: 0 means reference, 1 means AC, 2 means magnet,
-    % 3 means AC magnet, and 4 means not AC Stark data
     scanType = determineScanType(data);
     
     % Determine the number of types of scans
@@ -150,24 +132,24 @@ clc;
         excitationLaserPowerScans = 0;
         otherScans = 0;
         fprintf(1, '\tAC Stark scans\n');
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(Nref) ' reference\n']);
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(NAC) ' AC\n']);
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(Nmag) ' magnet\n']);
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(NACmag) ' AC magnet\n']);
+        fprintf(1, ['\t\t\t' num2str(Nref) ' reference\n']);
+        fprintf(1, ['\t\t\t' num2str(NAC) ' AC\n']);
+        fprintf(1, ['\t\t\t' num2str(Nmag) ' magnet\n']);
+        fprintf(1, ['\t\t\t' num2str(NACmag) ' AC magnet\n']);
     elseif (Nres + NHeNe + NresHeNe) ~= 0
         ACStarkScans = 0;
         excitationLaserPowerScans = 1;
         otherScans = 0;
         fprintf(1, '\texcitation laser power scans\n');
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(Nres) ' resonant OD\n']);
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(NHeNe) ' HeNe OD\n']);
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(NresHeNe) ' resonant HeNe OD\n']);
+        fprintf(1, ['\t\t\t' num2str(Nres) ' resonant OD\n']);
+        fprintf(1, ['\t\t\t' num2str(NHeNe) ' HeNe OD\n']);
+        fprintf(1, ['\t\t\t' num2str(NresHeNe) ' resonant HeNe OD\n']);
     elseif Nother ~= 0
         ACStarkScans = 0;
         excitationLaserPowerScans = 0;
         otherScans = 1;
         fprintf(1, '\tother scans\n');
-        fprintf(1, ['\t\t\t\t\t\t\t' num2str(Nother) ' total\n']);
+        fprintf(1, ['\t\t\t' num2str(Nother) ' total\n']);
     end
     
 %% Fit with Lorentzian(s)
@@ -203,6 +185,7 @@ clc;
             return
         case 'Yes' % Check each fit manually
             manualfit = 1;
+            fprintf(1, '\t\t\t\t\tFits checked manually\n');
     end
     
     % For loop to fit all of the spectra
@@ -218,18 +201,20 @@ clc;
         
         % Fit R and L detection with 1 peak only if AC Stark data
         if ACStarkScans && ((data(i).detPol == 'R') || (data(i).detPol == 'L'))
-            tolerance = 0.6;
+            tol = 0.6;
+        else
+            tol = tolerance;
         end
         
         % Evaluate rsquared to see if need to fit with 2 Lorentzians
         badfit = 0;
-        if gof.rsquare <= tolerance
+        if gof.rsquare <= tol
             
             % Fit the data with a sum of two Lorentzians
             [f, gof, guess] = fit2Lorentzians(xData, yData, yErr);
             
             % Record if fit is still bad
-            if gof.rsquare <= tolerance
+            if gof.rsquare <= tol
                 badfit = 1;
             end
             
@@ -251,16 +236,25 @@ clc;
         ylabel('Intensity (arb. units)');
         
         % If fit is bad or user wants to check each one, do manual fitting
+        anymanual = 0;
         if badfit || manualfit
-            [numPeaks(i), cancelled] = manualFitting(xData, yData, yErr, guess, numPeaks(i));
+            anymanual = 1;
+            [numPeaks(i), ft, cancelled] = manualFitting(xData, yData, yErr, guess, numPeaks(i));
             if cancelled
                 return
+            elseif ft
+                fprintf(1, ['\t\t\tScan ' data(i).filename ' fit manually\n']);
             end
         end
         
         % Assign parameters to fitvalues structure
         fitvalues(i) = assignFitValues(data(i), fitvalues(i), f, numPeaks(i));
     end
+    
+    if ~anymanual
+        fprintf(1, '\t\t\tAll scans fit automatically\n');
+    end
+    fprintf(1, ['\t\t\tTolerance: ' num2str(tolerance) '\n']);
     
 %% Plots
     % Plot all spectra
@@ -317,7 +311,7 @@ clc;
     h = 1:Nplots;
     
     % Save the figure
-    savefig(h, [ path '\' folder{1} ' Plots' '.fig']);
+    savefig(h, [ path '\' folder{1} ' plots' '.fig']);
     
     % Save variables from the workspace
     if ACStarkScans
@@ -329,5 +323,8 @@ clc;
     end
     
     fprintf(1, '\nData and figures saved!\n');
+    
+    % Output the log file
+    diary off
     
 end

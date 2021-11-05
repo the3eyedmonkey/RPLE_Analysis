@@ -1,10 +1,12 @@
-function [numpeaks, cancelled] = manualFitting(xData, yData, yErr, guess, numpeaks)
+function [numpeaks, ft, cancelled] = manualFitting(xData, yData, yErr, guess, numpeaks)
 %% manualFitting.m
 % Have the user manually supply guesses to fit the data
 % Here
 % numpeaks = numPeaks(i) from the main function
 
 %% 
+    % Let the calling program know if the user manually fit the scan
+    ft = 0;
     % Let the calling program know if the user cancelled this
     cancelled = 0;
     
@@ -68,12 +70,11 @@ function [numpeaks, cancelled] = manualFitting(xData, yData, yErr, guess, numpea
     
     % Now we know how many Lorentzians the initial data was fit
     % with, and how many the user would like to manually fit with.
-    % Next run a while loop to refit until the user is
-    % satisfied with the results.
+    % Next run a while loop to refit until the user is satisfied.
     
     while manualbadfit == 1 % Repeat until the user says the fit is good enough
         answerboxdim = 50;
-        if singletosingle == 1 || doubletosingle == 1 %The user wants to fit with a single Lorentzian
+        if singletosingle == 1 || doubletosingle == 1 % The user wants to fit with a single Lorentzian
             % Previous guesses
             if length(guess) == 7 % If previously fit with 2 Lorentzians
                 A = guess(1);
@@ -135,17 +136,18 @@ function [numpeaks, cancelled] = manualFitting(xData, yData, yErr, guess, numpea
                     return
                 case 'Yes'
                     numpeaks = 1; % Keep track of number of peaks for analysis later on
-
+                    
                     % Get rid of the guess on the plot
                     clf
                     h0 = errorbar(xData,yData,yErr,'b.','Capsize',0.1);
                     hold on
                     h1 = plot(f);
                     legend([h0,h1],'data', 'fit')
-
+                    
+                    ft = 1; % This data fit manually
                     manualbadfit = 0; % Exit the while loop
             end
-        elseif singletodouble == 1 || doubletodouble == 1 %The user wants to fit with double Lorentzian
+        elseif singletodouble == 1 || doubletodouble == 1 % The user wants to fit with double Lorentzian
             % Previous guesses
             if length(guess) == 4 % If previously fit with single Lorentzian
                 A1 = guess(1);
@@ -218,7 +220,7 @@ function [numpeaks, cancelled] = manualFitting(xData, yData, yErr, guess, numpea
                     cancelled = 1;
                     return
                 case 'Yes'
-                    numpeaks = 1; % Keep track of number of peaks for analysis later on
+                    numpeaks = 2; % Keep track of number of peaks for analysis later on
                     
                     % Get rid of the guess on the plot
                     clf
@@ -227,6 +229,7 @@ function [numpeaks, cancelled] = manualFitting(xData, yData, yErr, guess, numpea
                     h1 = plot(f);
                     legend([h0,h1],'data', 'fit')
                     
+                    ft = 1; % This data fit manually
                     manualbadfit = 0; % Exit the while loop
             end
         end
