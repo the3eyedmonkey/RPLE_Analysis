@@ -26,6 +26,7 @@ function [data, err] = loadRPLEdata(path)
     % For loop to load in the spectrum and assign them to the 'data'
     % structure sequentially. Because there may be other files in this folder
     % there will be extra spaces in the structure.
+    once = 0;
     for i = 3:length(directory)
         if directory(i).isdir == 1
             subfolder = dir([path '\' directory(i).name]);
@@ -48,7 +49,10 @@ function [data, err] = loadRPLEdata(path)
             
             isUNprocessed = ismember(split, '(unprocessed)');
             if any(isUNprocessed)
-                fprintf(1, '\nFinal processing done on the following scans:\n');
+                if once == 0
+                    fprintf(1, '\nFinal processing done on the following scans:\n');
+                    once = 1;
+                end
                 % Data not fully processed, open GUI to let user finish
                 for l = 3:length(subfolder)
                     split1a = strsplit(subfolder(l).name, '.');

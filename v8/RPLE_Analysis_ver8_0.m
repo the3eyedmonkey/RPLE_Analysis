@@ -49,8 +49,8 @@ function RPLE_Analysis_ver8_0(varargin)
 % Figures, data, and log file are saved.
 % ***********************************
 
-close all;
-clc;
+close all
+clc
 %% Input parameters
     in_params = inputParser;
     in_params.CaseSensitive = false;
@@ -61,8 +61,9 @@ clc;
 %% Loading in the data
     % Check the path
     if isempty(path)
-        % Ask the user to select the folder of interest '\\ecas.wvu.edu\squol\AC Stark Effect'
-        path = uigetdir();
+        % Ask the user to select the folder of interest
+        path = uigetdir(\\ecas.wvu.edu\squol\AC Stark Effect);
+        %path = '\\ecas.wvu.edu\squol\Data\RPLE_Testing_Fall_2021\MultiScanTesting\RaMultiScanTesting2';
         if path == 0 % User pressed cancel
             cprintf('err', '\nCANCELLED: Folder path selection cancelled.\n');
             return
@@ -171,7 +172,7 @@ clc;
     fprintf(1, '\nFitting progress:\n');
     
     % See if the user wants to visually check each fit for quality
-    answer0 = questdlg('Would you like to visually check each fit?',...
+    answer0 = questdlg('Would you like to manually check each fit?',...
         'Manual fitting', 'No');
     
     switch answer0
@@ -189,12 +190,18 @@ clc;
     end
     
     % For loop to fit all of the spectra
+    anymanual = 0;
     for i = 1:N
         
         % Data for fit
         xData = data(i).x;
         yData = data(i).y;
         yErr = data(i).sy;
+        
+        % In case the error bars are messed up
+        if any(yErr == 0)
+            yErr = ones(1, length(yErr));
+        end
         
         % Fit with a single Lorentzian
         [f, gof, guess] = fitLorentzian(xData, yData, yErr);
@@ -236,7 +243,6 @@ clc;
         ylabel('Intensity (arb. units)');
         
         % If fit is bad or user wants to check each one, do manual fitting
-        anymanual = 0;
         if badfit || manualfit
             anymanual = 1;
             [numPeaks(i), ft, cancelled] = manualFitting(xData, yData, yErr, guess, numPeaks(i));

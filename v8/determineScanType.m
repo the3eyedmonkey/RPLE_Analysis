@@ -21,9 +21,21 @@ function scanType = determineScanType(data)
     scanType = zeros(1, N);
     for i = 1:N
         AC = data(i).ACvalue;
+        if isempty(AC)
+            AC = char(1);
+        end
         mag = data(i).magvalue;
+        if isempty(mag)
+            mag = char(1);
+        end
         res = data(i).resOD;
+        if isempty(res)
+            res = char(1);
+        end
         HeNe = data(i).HeNeOD;
+        if isempty(HeNe)
+            HeNe = char(1);
+        end
         if AC == 0 && mag == 0
             scanType(i) = 0; % reference
         elseif isnumeric(AC) && (mag == 0 || ~isnumeric(mag))
